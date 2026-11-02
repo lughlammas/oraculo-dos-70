@@ -45,16 +45,28 @@ class Draw:
     @property
     def T(self): return self.U + self.L
 
-def validate(draw: Draw, n: int = 6) -> list[str]:
-    """Auditoria operacional: duplicatas, faces fora do conjunto, limites [15,69] p/ 7 e T∈[1,70]."""
-    errs, ids = [], [p.id for p in draw.pieces]
-    if len(set(ids)) != len(ids): errs.append("peça duplicada")
-    if any(not (0 <= v <= n) for p in draw.pieces for v in (p.top, p.bottom)): errs.append("face fora do conjunto")
-    k = len(draw.pieces)
-    if k == 7 and not 15 <= draw.T <= 69: errs.append(f"T={draw.T} fora de [15,69]")
-    if k >= 8: errs.append("modalidade expandida (8+): exige regra de exceção")
-    if not 1 <= draw.T <= 70: errs.append(f"T={draw.T} fora de [1,70]: exige regra de exceção")
-    return errs
+GEN_PROFILE = {"prng": "splitmix64", "prng_version": "1 (Steele/Vigna 2014, consts padrão)",
+    "initial_order": "lexicográfica (a,b) com a<=b, a=0..n",
+    "sampling": "Fisher-Yates parcial, inteiros por rejeição (sem viés de módulo)",
+    "orientation_rule": "após cada peça, rng.below(2)==1 troca topo/base"}
+
+def recompute(draw: Draw) -> dict:
+    return {"upper_line_sum": draw.U, "lower_line_sum": draw.L, "total_sum": draw.T}
+
+def modality(k: int) -> str:
+    return "padrao-7" if k == 7 else ("expandida-declarada" if k >= 8 else f"reduzida-{k}")
+
+def validate(draw: Draw, n: int = 6, declared_count: int | None = None) -> dict:
+    """Erros invalidam a tiragem; avisos não. Identidade canônica não orientada (3/4 == 4/3)."""
+    errs, warns, ps = [], [], draw.pieces
+    if [p.position for p in ps] != list(range(1, len(ps) + 1)): errs.append("posições não sequenciais")
+    if any(not (isinstance(v, int) and 0 <= v <= n) for p in ps for v in (p.top, p.bottom)): errs.append(f"face fora de 0..{n}")
+    if declared_count is not None and declared_count != len(ps): errs.append(f"pieces_count declarado {declared_count} != {len(ps)}")
+    ids = [p.id for p in ps]
+    if len(set(ids)) != len(ids): errs.append("peça física duplicada")
+    if len(ps) == 7 and not errs and not 15 <= draw.T <= 69: errs.append(f"T={draw.T} fisicamente impossível p/ 7 peças distintas")
+    if len(ps) >= 8: warns.append("modalidade expandida declarada (8+ peças)")
+    return {"valid": not errs, "errors": errs, "warnings": warns, "modality": modality(len(ps))}
 
 class Engine:
     def __init__(self, n: int = 6):
